@@ -1,0 +1,172 @@
+# PrivGraph Default Rule Set v0.1.0
+# Evaluate these rules against annotated Mermaid diagrams.
+# Each rule has a condition (what triggers it) and remediation (how to fix it).
+
+rules:
+  - id: PG-001
+    name: "Unencrypted Identifier Transfer"
+    severity: HIGH
+    category: data-protection
+    description: "Direct or indirect identifiers or PHI transferred without encryption in transit"
+    condition:
+      target: flow
+      data-class:
+        any: [DIRECT_ID, INDIRECT_ID, PHI]
+      control:
+        missing: encrypted-in-transit
+    remediation: |
+      Ensure TLS or equivalent encryption protects this data flow, then annotate:
+      %% @pg:control {source}-->{target} encrypted-in-transit
+
+  - id: PG-002
+    name: "Unencrypted Identifier Storage"
+    severity: HIGH
+    category: data-protection
+    description: "Direct or indirect identifiers or PHI stored without encryption at rest"
+    condition:
+      target: node
+      # Triggers on nodes that are targets of flows carrying these data classes
+      incoming-data-class:
+        any: [DIRECT_ID, INDIRECT_ID, PHI]
+      control:
+        missing: encrypted-at-rest
+    remediation: |
+      Enable encryption at rest for this data store, then annotate:
+      %% @pg:control {node} encrypted-at-rest
+
+  - id: PG-003
+    name: "Missing Retention Policy"
+    severity: MEDIUM
+    category: data-protection
+    description: "Sensitive data stored without a defined retention policy"
+    condition:
+      target: node
+      incoming-data-class:
+        any: [DIRECT_ID, INDIRECT_ID, PHI, PCI, BIOMETRIC, FINANCIAL, CREDENTIALS]
+      control:
+        missing: retention-policy
+    remediation: |
+      Define a data retention period and annotate:
+      %% @pg:control {node} retention-policy
+
+  - id: PG-004
+    name: "Credentials Without Encryption"
+    severity: HIGH
+    category: data-protection
+    description: "Credentials flow without encryption in transit"
+    condition:
+      target: flow
+      data-class:
+        any: [CREDENTIALS]
+      control:
+        missing: encrypted-in-transit
+    remediation: |
+      Ensure credentials are always transmitted over encrypted channels:
+      %% @pg:control {source}-->{target} encrypted-in-transit
+
+  - id: PG-005
+    name: "Direct Identifiers to Third Party Without DPA"
+    severity: CRITICAL
+    category: third-party
+    description: "Direct identifiers transferred to a third party without a Data Processing Agreement"
+    condition:
+      target: flow
+      data-class:
+        any: [DIRECT_ID, PHI, BIOMETRIC]
+      boundary:
+        any: [third-party]
+      control:
+        # Check dpa-in-place on the target node OR the flow itself
+        missing: dpa-in-place
+    remediation: |
+      Ensure a Data Processing Agreement exists with the third party, then annotate:
+      %% @pg:control {target} dpa-in-place
+
+  - id: PG-006
+    name: "PHI to Third Party"
+    severity: HIGH
+    category: third-party
+    description: "Protected health information transferred to a third party — verify HIPAA BAA"
+    condition:
+      target: flow
+      data-class:
+        any: [PHI]
+      boundary:
+        any: [third-party]
+    remediation: |
+      Verify a HIPAA Business Associate Agreement (BAA) is in place with the receiving party.
+      Annotate the flow with compliance scope:
+      %% @pg:compliance {source}-->{target} HIPAA
+
+  - id: PG-007
+    name: "Cross-Border Transfer Without Compliance"
+    severity: MEDIUM
+    category: compliance
+    description: "Data crosses regional boundaries without compliance framework annotation"
+    condition:
+      target: flow
+      boundary:
+        any: [cross-region]
+      compliance:
+        empty: true
+    remediation: |
+      Determine which compliance frameworks govern this cross-border transfer and annotate:
+      %% @pg:compliance {source}-->{target} GDPR
+
+  - id: PG-008
+    name: "HIPAA Flow Missing Audit Logging"
+    severity: HIGH
+    category: compliance
+    description: "HIPAA-scoped flow or node missing audit logging"
+    condition:
+      target: any
+      compliance:
+        includes: HIPAA
+      control:
+        missing: audit-logged
+    remediation: |
+      Enable audit logging for HIPAA-scoped components:
+      %% @pg:control {target} audit-logged
+
+  - id: PG-009
+    name: "GDPR Storage Without Retention Policy"
+    severity: MEDIUM
+    category: compliance
+    description: "GDPR-scoped storage node missing explicit retention policy"
+    condition:
+      target: node
+      compliance:
+        includes: GDPR
+      control:
+        missing: retention-policy
+    remediation: |
+      Define and document a retention policy per GDPR Article 5(1)(e):
+      %% @pg:control {node} retention-policy
+
+  - id: PG-010
+    name: "Uncontrolled Boundary Crossing"
+    severity: LOW
+    category: architecture
+    description: "Data flow crosses a trust boundary with no controls documented"
+    condition:
+      target: flow
+      boundary:
+        any: [third-party, cross-region, cross-cloud, public-internet, user-device]
+      control:
+        none: true
+    remediation: |
+      Document at least one control for flows crossing trust boundaries:
+      %% @pg:control {source}-->{target} encrypted-in-transit
+
+  - id: PG-011
+    name: "Node Without Controls"
+    severity: INFO
+    category: architecture
+    description: "Node has no controls documented — consider adding annotations"
+    condition:
+      target: node
+      control:
+        none: true
+    remediation: |
+      Document the controls in place for this component:
+      %% @pg:control {node} encrypted-at-rest, access-controlled
